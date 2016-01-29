@@ -1,306 +1,325 @@
+/*
+ * func_instr.cpp - instruction parser for mips
+ * @author Pavel Kryukov pavel.kryukov@phystech.edu
+ * Copyright 2015 MIPT-MIPS
+ */
+
+
 #include <func_instr.h>
-#include <ostream>
-#include <cassert>
+#include <stdio.h>
 #include <iostream>
+#include <sstream>
+#include <iomanip>
+#include <stdlib.h>
 
-const Reg FuncInstr::regTable[] =
+const FuncInstr::ISAEntry FuncInstr::isaTable[] =
 {
-	{"$zero", ZERO},
-	{"$at", AT},
-	{"$v0", V0},
-	{"$v1", V1},
-	{"$a0", A0},
-	{"$a1", A1},
-	{"$a2", A2},
-	{"$a3", A3},
-	{"$t0", T0},
-	{"$t1", T1},
-	{"$t2", T2},
-	{"$t3", T3},
-	{"$t4", T4},
-	{"$t5", T5},
-	{"$t6", T6},
-	{"$t7", T7},
-	{"$s0", S0},
-	{"$s1", S1},
-	{"$s2", S2},
-	{"$s3", S3},
-	{"$s4", S4},
-	{"$s5", S5},
-	{"$s6", S6},
-	{"$s7", S7},
-	{"$t8", T8},
-	{"$t9", T9},
-	{"$k0", K0},
-	{"$k1", K1},
-	{"$gp", GP},
-	{"$sp", SP},
-	{"$s8", S8},
-	{"$ra", RA},
+    // name  opcode  func   format    operation
+    { "add",    0x0, 0x20,  FORMAT_R, OUT_R_ARITHM, &FuncInstr::add },
+    { "addu",   0x0, 0x21,  FORMAT_R, OUT_R_ARITHM, &FuncInstr::addu },
+    { "sub",    0x0, 0x22,  FORMAT_R, OUT_R_ARITHM, &FuncInstr:: sub },
+    { "subu",   0x0, 0x23,  FORMAT_R, OUT_R_ARITHM, &FuncInstr::subu },
+    { "addi",   0x8, 0x0,   FORMAT_I, OUT_I_ARITHM, &FuncInstr::addi },
+    { "addiu",  0x9, 0x0,   FORMAT_I, OUT_I_ARITHM, &FuncInstr::addiu },
+    { "mult",   0x0, 0x18,  FORMAT_R, OUT_R_ARITHM, &FuncInstr::mult },    
+    { "multu",  0x0, 0x19,  FORMAT_R, OUT_R_ARITHM, &FuncInstr::multu},
+    { "div",    0x0, 0x1A,  FORMAT_R, OUT_R_ARITHM, &FuncInstr::div},
+    { "divu",   0x0, 0x1B,  FORMAT_R, OUT_R_ARITHM, &FuncInstr::divu},
+    { "mfhi",   0x0, 0x10,  FORMAT_R, OUT_R_ARITHM, &FuncInstr::mfhi},
+    { "mthi",   0x0, 0x11,  FORMAT_R, OUT_R_ARITHM, &FuncInstr::mthi},
+    { "mflo",   0x0, 0x12,  FORMAT_R, OUT_R_ARITHM, &FuncInstr::mflo},
+    { "mtlo",   0x0, 0x13,  FORMAT_R, OUT_R_ARITHM, &FuncInstr::mflo},
+    { "sll",    0x0, 0x0,   FORMAT_R, OUT_R_SHAMT,  &FuncInstr::sll},
+    { "srl",    0x0, 0x2,   FORMAT_R, OUT_R_SHAMT,  &FuncInstr::srl},
+    { "sra",    0x0, 0x3,   FORMAT_R, OUT_R_SHAMT,  &FuncInstr::sra},
+    { "sllv",   0x0, 0x4,   FORMAT_R, OUT_R_ARITHM, &FuncInstr::sllv},
+    { "srlv",   0x0, 0x6,   FORMAT_R, OUT_R_ARITHM, &FuncInstr::srlv},
+    { "srav",   0x0, 0x7,   FORMAT_R, OUT_R_ARITHM, &FuncInstr::srav},
+    { "lui",    0xF, 0x0,   FORMAT_I, OUT_I_ARITHM, &FuncInstr::lui},
+    { "slt",    0x0, 0x2A,  FORMAT_R, OUT_R_ARITHM, &FuncInstr::slt},
+    { "sltu",   0x0, 0x2B,  FORMAT_R, OUT_R_ARITHM, &FuncInstr::sltu},
+    { "slti",   0xA, 0x0,   FORMAT_I, OUT_I_ARITHM, &FuncInstr::slti},
+    { "sltiu",  0xB, 0x0,   FORMAT_I, OUT_I_ARITHM, &FuncInstr::sltiu},
+    { "and",    0x0, 0x24,  FORMAT_R, OUT_R_ARITHM, &FuncInstr::_and},
+    { "or",     0x0, 0x25,  FORMAT_R, OUT_R_ARITHM, &FuncInstr::_or},
+    { "xor",    0x0, 0x26,  FORMAT_R, OUT_R_ARITHM, &FuncInstr::_xor},
+    { "nor",    0x0, 0x27,  FORMAT_R, OUT_R_ARITHM, &FuncInstr::nor},
+    { "andi",   0xC, 0x0,   FORMAT_I, OUT_I_ARITHM, &FuncInstr::andi},
+    { "ori",    0xD, 0x0,   FORMAT_I, OUT_I_ARITHM, &FuncInstr::ori},
+    { "xori",   0xE, 0x0,   FORMAT_I, OUT_I_ARITHM, &FuncInstr::xori},
+    { "beq",    0x4, 0x0,   FORMAT_I, OUT_I_BRANCH, &FuncInstr::beq},
+    { "bne",    0x5, 0x0,   FORMAT_I, OUT_I_BRANCH, &FuncInstr::bne},
+    { "blez",   0x6, 0x0,   FORMAT_I, OUT_I_BRANCH, &FuncInstr::blez},
+    { "bgtz",   0x7, 0x0,   FORMAT_I, OUT_I_BRANCH, &FuncInstr::bgtz},
+    { "jal",    0x3, 0x0,   FORMAT_J, OUT_J_JUMP, 	&FuncInstr::jal},
+    { "j",      0x2, 0x0,   FORMAT_J, OUT_J_JUMP, 	&FuncInstr::j},
+    { "jr",     0x0, 0x8,   FORMAT_R, OUT_R_JUMP, 	&FuncInstr::jr},
+    { "jalr",   0x0, 0x9,   FORMAT_R, OUT_R_JUMP, 	&FuncInstr::jalr},
+    { "lb",     0x20,0x0,   FORMAT_I, OUT_I_LOAD, 	&FuncInstr::lb},
+    { "lh",     0x21,0x0,   FORMAT_I, OUT_I_LOAD,	&FuncInstr::lh},
+    { "lw",     0x23,0x0,   FORMAT_I, OUT_I_LOAD,	&FuncInstr::lw},
+    { "lbu",    0x24,0x0,   FORMAT_I, OUT_I_LOAD,	&FuncInstr::lbu},
+    { "lhu",    0x25,0x0,   FORMAT_I, OUT_I_LOAD,	&FuncInstr::lhu},
+    { "sb",     0x28,0x0,   FORMAT_I, OUT_I_STORE,	&FuncInstr::sb},
+    { "sh",     0x29,0x0,   FORMAT_I, OUT_I_STORE,	&FuncInstr::sh},
+    { "sw",     0x2b,0x0,   FORMAT_I, OUT_I_STORE, 	&FuncInstr::sw},
+    { "syscall",0x0, 0xC,   FORMAT_R, OUT_R_SPECIAL,&FuncInstr::syscall},
+    { "break",  0x0, 0xD,   FORMAT_R, OUT_R_SPECIAL,&FuncInstr::_break},
+    { "trap",   0x1A,0x0,   FORMAT_J, OUT_J_SPECIAL,&FuncInstr::trap},
+};
+const uint32 FuncInstr::isaTableSize = sizeof(isaTable) / sizeof(isaTable[0]);
+
+const char *FuncInstr::regTable[] = 
+{
+    "zero",
+    "at",
+    "v0", "v1",
+    "a0", "a1", "a2", "a3",
+    "t0", "t1", "t2", "t3", "t4", "t5", "t6", "t7",
+    "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7",
+    "t8", "t9", 
+    "k0", "k1",
+    "gp",
+    "sp"
+    "fp",
+    "ra"
 };
 
-const ISAEntry FuncInstr::isaTable[] =
+FuncInstr::FuncInstr( uint32 bytes, uint32 PC) : instr(bytes), PC(PC)
 {
-//	name		 opcode			func		format			type			rs		rt 		rd 		shamt
-	{"add ",	    0x0,  		0x20,		FORMAT_R,		ADD,			1,		1,		1,		0},
-	{"addu ",	    0x0,	    0x21,		FORMAT_R,		ADD,			1,		1,		1,		0},
-	{"sub ",	    0x0,		0x22,		FORMAT_R,		ADD,			1,		1,		1,		0},
-	{"subu ",       0x0,		0x23,		FORMAT_R,		ADD,			1,		1,		1,		0},
-	{"addi ",	    0x8,		0x0,		FORMAT_I, 		ADD,			1,		1,		0,		0},
-	{"addiu ",		0x9,		0x0,		FORMAT_I,		ADD,			1,		1,		0,		0},
-
-	{"mult ",		0x0,		0x18,		FORMAT_R,		MUL,			1,		1,		0,		0},
-	{"multu ",		0x0,		0x19,		FORMAT_R,		MUL,			1,		1,		0,		0},
-	{"div ",		0x0,		0X1A,		FORMAT_R,		MUL,			1,		1,		0,		0},
-	{"divu ",		0x0,		0x1B,		FORMAT_R,		MUL,			1,		1,		0,		0},
-	{"mfhi ",		0x0,		0x10,		FORMAT_R,		MUL,			0,		0,		1,		0},
-	{"mthi ",		0x0,		0x11,		FORMAT_R,		MUL,			1,		0,		0,		0},
-	{"mflo ",		0x0,		0x12,		FORMAT_R,		MUL,			0,		0,		1,		0},
-	{"mtlo ",		0x0,		0x13,		FORMAT_R,		MUL,			1,		0,		0,		0},
-
-	{"sll ",		0x0,		0x0,		FORMAT_R,		SHIFT,			1,		1,		1,		1},
-	{"srl ",		0x0,		0x2,		FORMAT_R,		SHIFT,			1,		1,		1,		1},
-	{"sra ",		0x0,		0x3,		FORMAT_R,		SHIFT,			1,		1,		1,		1},
-	{"sllv ",		0x0,		0x4,		FORMAT_R,		SHIFT,			1,		1,		1,		0},
-	{"srlv ",		0x0,		0x6,		FORMAT_R,		SHIFT,			1,		1,		1,		0},
-	{"srav ",		0x0,		0x7,		FORMAT_R,		SHIFT,			1,		1,		1,		0},
-	{"lui ",		0xF,		0x0,		FORMAT_I,		SHIFT,			1,		1,		0,		0},
-
-	{"slt ",		0x0,		0x2A,		FORMAT_R,		COMPRASSION,	1,		1,		1,		0},
-	{"sltu ",		0x0,		0x2B,		FORMAT_R,		COMPRASSION,	1,		1,		1,		0},
-	{"slti ",		0xA,		0x0,		FORMAT_I,		COMPRASSION,	1,		1,		0,		0},
-	{"sltiu ",		0xB,		0x0,		FORMAT_I,		COMPRASSION,	1,		1,		0,		0},
-
-	{"and ",		0x0,		0x24,		FORMAT_R,		LOGIC,			1,		1,		1,		0},
-	{"or ",			0x0,		0x25,		FORMAT_R,		LOGIC,			1,		1,		1,		0},
-	{"xor ",		0x0,		0x26,		FORMAT_R,		LOGIC,			1,		1,		1,		0},
-	{"nor ",		0x0,		0x27,		FORMAT_R,		LOGIC,			1,		1,		1,		0},
-	{"andi ",		0xC,		0x0,		FORMAT_I,		LOGIC,			1,		1,		0,		0},
-	{"ori ",		0xD,		0x0,		FORMAT_I,		LOGIC,			1,		1,		0,		0},
-	{"xori ",		0xE,		0x0,		FORMAT_I,		LOGIC,			1,		1,		0,		0},
-
-	{"beq ",		0x4,		0x0,		FORMAT_I,		CONDITION,		1,		1,		0,		0},
-	{"bne ",		0x5,		0x0,		FORMAT_I,		CONDITION,		1,		1,		0,		0},
-	{"blez ",		0x6,		0x0,		FORMAT_I,		CONDITION,		1,		0,		0,		0},
-	{"bgtz ",		0x7,		0x0,		FORMAT_I,		CONDITION,		1,		0,		0,		0},
-
-	{"j ",			0x2,		0x0,		FORMAT_J,		UNC_JUMP,		0,		0,		0,		0},
-	{"jal ",		0x3,		0x0,		FORMAT_J,		UNC_JUMP,		0,		0,		0,		0},
-	{"jr ",			0x0,		0x8,		FORMAT_R,		UNC_JUMP,		1,		0,		0,		0},
-	{"jalr ",		0x0,		0x9,		FORMAT_R,		UNC_JUMP,		1,		0,		0,		0},
-
-	{"lb ",			0x20,		0x0,		FORMAT_I,		LOAD,			1,		1,		0,		0},
-	{"lh ",			0x21,		0x0,		FORMAT_I,		LOAD,			1,		1,		0,		0},
-	{"lw ",			0x23,		0x0,		FORMAT_I,		LOAD,			1,		1,		0,		0},
-	{"lbu ",		0x24,		0x0,		FORMAT_I,		LOAD,			1,		1,		0,		0},
-	{"lhu ",		0x25,		0x0,		FORMAT_I,		LOAD,			1,		1,		0,		0},
-
-	{"sb ",			0x28,		0x0,		FORMAT_I,		STORE,			1,		1,		0,		0},
-	{"sh ",			0x29,		0x0,		FORMAT_I,		STORE,			1,		1,		0,		0},
-	{"sw ",			0x2b,		0x0,		FORMAT_I,		STORE,			1,		1,		0,		0},
-
-	{"syscall ",	0x0,		0xC,		FORMAT_R,		SYSCALL,		0,		0,		0,		0},
-	{"break ",		0x0,		0xD,		FORMAT_R,		BREAK,			0,		0,		0,		0},
-	{"trap ",		0x1A,		0x0,		FORMAT_J,		TRAP,			0,		0,		0,		0},
-};
-
-FuncInstr::FuncInstr(uint32 byte):
-	format(FORMAT_INV)
-//	bytes(byte)
-{
-	bytes.raw = byte;
-	initFormat(byte);
-    switch (format)
+    initFormat(); 
+    switch ( format)
     {
         case FORMAT_R:
-            parserR(byte);
+            initR();
             break;
         case FORMAT_I:
-            parserI(byte);
+            initI();
             break;
         case FORMAT_J:
-            parserJ(byte);
+            initJ();
             break;
-        default:
-        	std::cerr << "ERROR: ivalid format" << std::endl;
-            exit(EXIT_FAILURE);
+        case FORMAT_UNKNOWN:
+            initUnknown();
             break;
     }
 }
 
-void FuncInstr::initFormat(uint32 byte)
+
+std::string FuncInstr::Dump( std::string indent) const
 {
-	uint32 op = byte >> 26;
-	if(op == 0)
-		format = FORMAT_R;
-	else
+    return indent + disasm;
+}
+
+void FuncInstr::initFormat()
+{
+    for ( size_t i = 0; i < isaTableSize; i++) {
+        if ( instr.asR.opcode == isaTable[i].opcode)
+        {
+            format = isaTable[i].format;
+            operation = isaTable[i].operation;
+            isaNum = i;
+            return;
+        }
+    }
+    format = FORMAT_UNKNOWN;
+}
+
+
+void FuncInstr::initR()
+{
+    // find instr by functor
+    for (isaNum = 0; isaNum < isaTableSize; ++isaNum) {
+        if (( instr.asR.opcode == isaTable[isaNum].opcode) &&
+            ( instr.asR.funct == isaTable[isaNum].funct))
+        {
+            operation = isaTable[isaNum].operation;
+            break;
+        }
+    }
+    if ( isaNum == isaTableSize)     // if didn't found funct
+    {
+        initUnknown();
+        return;
+    }
+    
+    ostringstream oss;
+    oss << isaTable[isaNum].name;
+    switch ( operation)
+    {
+        case OUT_R_ARITHM:
+            oss << " $" << regTable[instr.asR.rd] << ", $" \
+                        << regTable[instr.asR.rs] << ", $" \
+                        << regTable[instr.asR.rt];
+            break;
+        case OUT_R_SHAMT:
+            oss << " $" << regTable[instr.asR.rd] << ", $" \
+                        << regTable[instr.asR.rt] << ", " \
+                        << dec << instr.asR.shamt;
+            break;
+        case OUT_R_JUMP:
+            oss << " $" << regTable[instr.asR.rs];
+            break;
+        case OUT_R_SPECIAL:
+            break;
+    }
+    disasm = oss.str();
+}
+
+
+void FuncInstr::initI()
+{
+    std::ostringstream oss;
+    oss << isaTable[isaNum].name << " $";
+    switch ( operation)
+    {
+        case OUT_I_ARITHM:
+            oss << regTable[instr.asI.rt] << ", $"
+                << regTable[instr.asI.rs] << ", "
+                << std::hex << "0x" << static_cast< signed int>( instr.asI.imm) << std::dec;
+            break;
+        case OUT_I_BRANCH:
+            oss << regTable[instr.asI.rs] << ", $"
+                << regTable[instr.asI.rt] << ", "
+                << std::hex << "0x" << static_cast< signed int>( instr.asI.imm) << std::dec;
+            break;
+        case OUT_I_LOAD:
+            oss << regTable[instr.asI.rt] << ", "
+                << std::hex << "0x" << static_cast< signed int>( instr.asI.imm) 
+                << std::dec << "($" << regTable[instr.asI.rs] << ")";
+            break;
+        case OUT_I_STORE:
+            oss << regTable[instr.asI.rt] << ", "
+                << std::hex << "0x" << static_cast< signed int>( instr.asI.imm) 
+                << std::dec << "($" << regTable[instr.asI.rs] << ")";
+            break;
+    }
+    disasm = oss.str();
+}
+
+void FuncInstr::initJ()
+{
+    std::ostringstream oss;
+    oss << isaTable[isaNum].name;
+    switch ( operation)
+    {
+        case OUT_J_JUMP:
+            oss << " " << std::hex << "0x" <<instr.asJ.imm;
+            break;
+        case OUT_J_SPECIAL:
+            break;
+    }
+    disasm = oss.str();
+}
+
+void FuncInstr::initUnknown()
+{
+    std::ostringstream oss;
+    oss << std::hex << std::setfill( '0')
+        << "0x" << std::setw( 8) << instr.raw << '\t' << "Unknown" << std::endl;
+    disasm = oss.str();
+    std::cerr << "ERROR.Incorrect instruction: " << disasm << std::endl;
+    exit(EXIT_FAILURE);
+}
+
+std::ostream& operator<< ( std::ostream& out, const FuncInstr& instr)
+{
+    return out << instr.Dump( "");
+}
+
+
+void FuncInstr::execute()
+{
+	(this->*(isaTable[isaNum].impl))();
+	new_PC = PC + 4;
+	createMIPS_string();
+}
+
+std::string FuncInstr::MIPS_Dump(std::string indent) const
+{
+	return indent + MIPS_string;
+}
+
+void FuncInstr::createMIPS_string()
+{
+	ostringstream oss;
+	oss << isaTable[isaNum].name;
+
+	switch( operation )
 	{
-		for(uint32 i = 0; i < 51; i++)
-		{
-			if(isaTable[i].opcode == op)
-			{
-				format = isaTable[i].format;
-				break;
-			}
-		}
+		case OUT_R_ARITHM:
+            oss << " $" << regTable[instr.asR.rd] << " [" << std::hex << "0x" << v_dst \
+            	<< std::dec << "], $" \
+                << regTable[instr.asR.rs] << " [" << std::hex << "0x" << v_src2 \
+                << std::dec <<  "], $" \
+                << regTable[instr.asR.rt] << " [" << std::hex <<  "0x" << v_src1 << std::dec << "] "; 
+            break;
+        case OUT_R_SHAMT:
+            oss << " $" << regTable[instr.asR.rd] << " [" << std::hex << "0x" << v_dst \
+            	<< std::dec << "], $" \
+                << regTable[instr.asR.rt] << " [" << std::hex << "0x" << v_src1 \
+                << std::dec <<  "] " \
+                << instr.asR.shamt; 
+            break;
+        case OUT_R_JUMP:
+            oss << " $" << regTable[instr.asR.rs] << " [" << std::hex << "0x" << v_src2 << std::dec << "] ";
+            break;
+        case OUT_R_SPECIAL:
+            break;
+        case OUT_I_ARITHM:
+            oss << regTable[instr.asI.rt] << " [" << std::hex << "0x" << v_dst 
+            	<< std::dec << "], $" << regTable[instr.asI.rs] << " [" << std::hex << "0x" << v_src2
+            	<< std::dec << "], " << std::hex << "0x" 
+				<< static_cast< signed int >( instr.asI.imm) << std::dec; 
+            break;
+        case OUT_I_BRANCH:
+            oss << " $" << regTable[instr.asI.rs] << " [" << std::hex << "0x" << v_src2
+            	<< std::dec << "], $" << regTable[instr.asI.rt] << " [" << std::hex << "0x" << v_src1
+            	<< std::dec << "], " << std::hex << "0x" 
+				<< static_cast< signed int >( instr.asI.imm) << std::dec;
+            break;
+        case OUT_I_LOAD:
+            oss << " $" << regTable[instr.asI.rt] << ", "  << std::hex << "0x" << static_cast< signed int >(instr.asI.imm)
+				<< std::dec << "($" << regTable[instr.asI.rs] << " [" << std::hex << "0x" << v_src2
+                << std::dec << "])";
+            break;
+        case OUT_I_STORE:
+            oss << " $" << regTable[instr.asI.rt] << " [" << std::hex << "0x" << v_src1
+             	<< std::dec << "], " << std::hex << "0x" << static_cast< signed int >( instr.asI.imm) 
+            	<< std::dec << "($" << regTable[instr.asI.rs] << " [" << std::hex << "0x" << v_src2 
+            	<< std::dec << "])";
+            break;
+        case OUT_J_JUMP:
+            oss << " " << std::hex << "0x" <<instr.asJ.imm;
+            break;
+        case OUT_J_SPECIAL:
+            break;
+        default: break;
+
+        MIPS_string = oss.str();
 	}
+
 }
 
-
-void FuncInstr::parserR(uint32 byte)
+int FuncInstr::get_dst_num_index() const
 {
-	std::ostringstream oss;
-//	uint32 _func = 0;
-	for(uint32 i = 0; i < 51; i++)
+	switch(operation)
 	{
-		uint32 _func = byte - ((byte >> 6) << 6);
-		if(_func == isaTable[i].func)
-		{
-			oss << isaTable[i].name;
-			switch(isaTable[i].type)
-			{
-				case ADD : 
-					oss << DST_SequenceR(i);
-					break;
-				case MUL :
-					oss << DST_SequenceR(i);
-					break;
-				case SYSCALL:
-					break;
-				case BREAK:
-					break;
-				default  :
-					oss << DTS_SequenceR(i);
-					break;
-			}
-			break;
-		}
+		case OUT_R_ARITHM:
+		case OUT_R_SHAMT:
+			return static_cast< int >( instr.asR.rd);
+		case OUT_I_ARITHM:
+		case OUT_I_LOAD:
+		case OUT_I_STORE:
+			return static_cast< int >( instr.asI.rt);
+		case OUT_J_JUMP:
+			if(isaNum == 36)
+				return 31;
+			else return 0;
+		case OUT_R_JUMP:
+			if(isaNum == 39)
+				return 31;
+			else return 0;			
+		default: return 0;
 	}
-	str = oss.str();
-}
-
-std::string FuncInstr::DST_SequenceR(uint32 i)
-{
-	std::ostringstream oss;
-	if(isaTable[i].rd != 0)
-		oss << regTable[bytes.asR.rd].name << ", ";
-	if(isaTable[i].rs != 0)
-		oss << regTable[bytes.asR.rs].name << ", ";
-	if(isaTable[i].rt != 0)
-		oss << regTable[bytes.asR.rt].name << ", ";
-	std::string s = oss.str();
-	s.pop_back();
-	s.pop_back();
-	return s;
-}
-
-std::string FuncInstr::DTS_SequenceR(uint32 i)
-{
-	std::ostringstream oss;
-
-	if(isaTable[i].rd != 0)
-		oss << regTable[bytes.asR.rd].name << ", ";
-	if(isaTable[i].rt != 0)
-		oss << regTable[bytes.asR.rt].name << ", ";
-	if(isaTable[i].rs != 0)
-		oss << regTable[bytes.asR.rs].name << ", ";
-	if(isaTable[i].shamt != 0)
-		oss << std::hex << bytes.asR.shamt << ", ";
-
-	std::string s = oss.str();
-	s.pop_back();
-	s.pop_back();
-	return s;
-}
-
-void FuncInstr::parserI(uint32 byte)
-{
-	std::ostringstream oss;
-
-	uint32 op = byte >> 26;
-
-	for(uint32 i = 0; i < 51; i++)
-	{		
-		if(op == isaTable[i].opcode) 
-		{
-			oss << isaTable[i].name;
-			switch(isaTable[i].type)
-			{
-				case ADD :
-					oss << TS_SequenceI(i);
-					break;
-				case LOAD:
-					oss << Load_Store(i);
-					break;
-				case STORE:
-					oss << Load_Store(i);
-					break;
-				default:
-					oss << ST_SequenceI(i);
-					break;
-			}
-		}
-	}
-	str = oss.str();
-}
-
-
-std::string FuncInstr::TS_SequenceI(uint32 i)
-{
-	std::ostringstream oss;
-
-	oss << regTable[bytes.asI.rt].name << ", " << regTable[bytes.asI.rs].name << ", "
-		<< "0x" << std::hex << bytes.asI.imm;
-	return oss.str(); 
-}
-
-std::string FuncInstr::Load_Store(uint32 i)
-{
-	std::ostringstream oss;
-
-	oss << regTable[bytes.asI.rt].name << ", " 
-		<< "0x" << std::hex << bytes.asI.imm << "(" 
-		<< regTable[bytes.asI.rs].name << ")";
-	return oss.str(); 
-}
-
-
-std::string FuncInstr::ST_SequenceI(uint32 i)
-{
-	std::ostringstream oss;
-
-	if(isaTable[i].rs != 0)
-		oss << regTable[bytes.asI.rs].name << ", ";
-	if(isaTable[i].rt != 0)
-		oss << regTable[bytes.asI.rt].name << ", ";
-	oss << "0x" << std::hex << bytes.asI.imm;
-
-	return oss.str();
-}
-
-
-void FuncInstr::parserJ(uint32 byte)
-{
-	std::ostringstream oss;
-	if(bytes.asJ.opcode == 0x2)
-		oss << "j " <<  "0x" << std::hex << bytes.asJ.offset;
-	if(bytes.asJ.opcode == 0x3)
-		oss << "jal " <<  "0x" << std::hex << bytes.asJ.offset;
-	if(bytes.asJ.opcode == 0x1A)
-		oss << "trap " << "0x" << std::hex << bytes.asJ.offset;
-	str = oss.str();
-}
-
-
-std::string FuncInstr::Dump(std::string indent) const
-{
-	std::ostringstream oss;
-	oss << indent << str;
-	return oss.str();
-}
-
-std::ostream& operator<<( std::ostream& out, const FuncInstr& instr)
-{
-	out << instr.Dump(" ");
-	return out;
 }
