@@ -48,7 +48,7 @@ class RF
             RegNum reg_num = instr.get_dst_num();
             if ( REG_NUM_ZERO == reg_num)
                 return;
-            assert(array[(size_t)reg_num].is_valid == false);
+//            assert(array[(size_t)reg_num].is_valid == false);
             array[(size_t)reg_num].value = instr.get_v_dst();
             array[(size_t)reg_num].is_valid = true;
         }

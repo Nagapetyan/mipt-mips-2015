@@ -24,13 +24,17 @@ class RF
             return array[(size_t)num].value; 
         };
         bool check(RegNum num) const {return array[(size_t)num].is_valid; }
-        void invalidate(RegNum num) { array[(size_t)num].is_valid = false; }
+        void invalidate(RegNum num) 
+	{ 
+		if(num != REG_NUM_ZERO)
+			array[(size_t)num].is_valid = false;
+	}
         void write(RegNum num, uint32 val)
         {
 
             assert(array[(size_t)num].is_valid == false);
             array[(size_t)num].is_valid = true;
-            array[num].value = (num != 0) ? val : 0;
+            array[(size_t)num].value = (num != 0) ? val : 0;
         }
 
         inline void read_src1( FuncInstr& instr) 
@@ -55,8 +59,8 @@ class RF
 
         inline void reset( RegNum reg)
         {
-            array[reg].value = 0;
-            array[reg].is_valid = true;
+            array[(size_t)reg].value = 0;
+            array[(size_t)reg].is_valid = true;
         }
  
         RF()

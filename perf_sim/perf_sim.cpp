@@ -64,18 +64,19 @@ void PerfMIPS::run( const std::string& tr, int instr_to_run, bool silent)
 {
 
 	mem = new FuncMemory( tr.c_str());
-    PC = mem->startPC();
+    	PC = mem->startPC();
 
 	executed_instruction = 0;
+//	std::cout << instr_to_run << std::endl;
 	cycle = 0;
-	while(executed_instruction <= instr_to_run)
+	while(executed_instruction < instr_to_run)
 	{
-
+//		std::cout << executed_instruction << std::endl;
+		pwriteback->clock(silent);
 		pdecode->clock();
 		pfetch->clock();
 		pexecute->clock();
 		pmemory->clock();
-		pwriteback->clock(silent);
 
 		if(silent == false)
 		{
@@ -96,7 +97,7 @@ Fetch::Fetch(PerfMIPS* ppln):
 ppln(ppln), byte_instr(0), cycle(0)
 {
 	wp_fetch_2_decode = new WritePort<uint32>("FETCH_2_DECODE", port_bw, port_fanout);
-	rp_decode_2_fetch_stall = new ReadPort<bool>("DECODE_2_FETHC_STALL", port_latency);
+	rp_decode_2_fetch_stall = new ReadPort<bool>("DECODE_2_FETCH_STALL", port_latency);
 }
 
 Fetch::~Fetch()
@@ -109,10 +110,12 @@ void Fetch::clock()
 {
 	std::ostringstream oss;
 
+//	std::cout << ppln->get_PC_valid() << std::endl;
+	
 	bool is_stall = false;
 	cycle = ppln->get_cycle();
 
-	oss << "fetch\tcycle " << cycle <<":\t";
+	oss << "fetch\t\tcycle " << cycle <<":\t";
 
 	rp_decode_2_fetch_stall->read(&is_stall, cycle);
 	if( is_stall )
@@ -158,7 +161,7 @@ void Decode::clock()
 	bool is_stall = false;
 	cycle = ppln->get_cycle();
 
-	oss << "decode\tcycle " << cycle << ":\t";
+	oss << "decode\t\tcycle " << cycle << ":\t";
 
 	rp_execute_2_decode_stall->read(&is_stall, cycle);
 	if(is_stall)
@@ -174,15 +177,19 @@ void Decode::clock()
 	bool is_read; 
 	is_read = rp_fetch_2_decode->read(&byte_instr, cycle);
 	
-	if ((was_decode == true) && (is_read == false)) 
+	if ( (was_decode == true) && (is_read == false)) 
 	{
+//		std::cout << "dec bubble_1" << std::endl;
+
 		oss << "bubble\n";
 		dump = oss.str();
 		return;
 	}
+	
+
 	FuncInstr instr(byte_instr, PC);
 
-	if(instr.is_jump())
+	if(instr.is_jump() && (is_read == true))
 	{
 		ppln->PC_invalidate();
 	}
@@ -192,6 +199,8 @@ void Decode::clock()
 
 	if(is_stall == false)
 	{
+		ppln->read_src(instr);
+		ppln->reg_invalidate(instr.get_dst_num());
 		wp_decode_2_execute->write(instr, cycle);
 		was_decode = true;
 		if(!instr.is_jump())
@@ -200,6 +209,8 @@ void Decode::clock()
 	}
 	else
 	{
+//		std::cout << "dec bubble_2" << std::endl;
+
 		wp_decode_2_fetch_stall->write(true, cycle);
 		was_decode = false;
 		oss << "bubble\n";
@@ -210,11 +221,11 @@ void Decode::clock()
 
 bool Decode::is_need_stall(FuncInstr &instr)
 {
-	if((ppln->check(instr.get_src1_num()) == false) || (ppln->check(instr.get_src2_num()) == false))
+	if(((ppln->check(instr.get_src1_num())) == false) || ((ppln->check(instr.get_src2_num()) == false)))
 		return true;
 	else 
 	{
-		ppln->reg_invalidate(instr.get_dst_num());
+//		ppln->reg_invalidate(instr.get_dst_num());
 		return false;
 	}
 }
@@ -243,7 +254,7 @@ void Execute::clock()
 	bool is_stall = false;
 	cycle = ppln->get_cycle();
 	
-	oss << "execute\tcycle " << cycle << ":\t";
+	oss << "execute\t\tcycle " << cycle << ":\t";
 
 	rp_memory_2_execute_stall->read(&is_stall, cycle);
 	if(is_stall)
@@ -255,7 +266,7 @@ void Execute::clock()
 	}
 
 	bool is_read;
-	FuncInstr instr(0);
+	FuncInstr instr;
 	is_read = rp_decode_2_execute->read(&instr, cycle);
 
  	if(is_read == false)
@@ -297,7 +308,7 @@ void Memory::clock()
 	bool is_stall = false;
 	cycle = ppln->get_cycle();
 
-	oss << "memory\tcycle " << cycle << ":\t";
+	oss << "memory\t\tcycle " << cycle << ":\t";
 	rp_writeback_2_memory_stall->read(&is_stall, cycle); 
 
 	if(is_stall == true)
@@ -308,7 +319,7 @@ void Memory::clock()
 		return;
 	}
 
-	FuncInstr instr(0);
+	FuncInstr instr;
 	bool is_read;
 	is_read = rp_execute_2_memory->read(&instr, cycle);
 
@@ -345,12 +356,12 @@ void Writeback::clock(bool silent)
 	std::ostringstream oss;
 
 	cycle = ppln->get_cycle();
-	FuncInstr instr(0);
+	FuncInstr instr;
 
 	if(silent == false )
 		oss << "writeback\tcycle " << cycle << ":\t";
 
-	if(rp_memory_2_writeback->read(&instr, cycle))
+	if(rp_memory_2_writeback->read(&instr, cycle) == false)
 	{
 		if(silent == false )
 			oss << "bubble\n";
@@ -363,7 +374,8 @@ void Writeback::clock(bool silent)
 		ppln->PC_validate();
 		ppln->updatePC(instr);
 	}
-
+	
+	wp_writeback_2_memory_stall->write(false, cycle);
 	ppln->wb(instr);
 	ppln->update_exec_instr();
 
