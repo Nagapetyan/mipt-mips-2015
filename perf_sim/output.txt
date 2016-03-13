@@ -1,0 +1,2 @@
+g++ -c perf_sim.cpp -I ./ -I ..//common/ -I ..//func_sim/elf_parser/ -I ..//func_sim/func_memory/ -I ..//func_sim/func_instr -I ..//perf_sim/
+Makefile:38: recipe for target 'perf_sim.o' failed
