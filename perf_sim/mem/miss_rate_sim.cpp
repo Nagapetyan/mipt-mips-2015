@@ -25,32 +25,7 @@ int main(int argc, char** argv)
 
 	write << std::endl;
 
-	write << "Full\t\t";
-/*	for(unsigned long size = 1024; size <= 1024*1024 ; size <<= 1 )
-	{
-		CacheTagArray cache_tag_array( size, (size / BLOCK_SIZE_IN_BYTES), BLOCK_SIZE_IN_BYTES, ADDR_SIZE_IN_BYTES);
-		unsigned  miss = 0;
-		unsigned  total = 0;
-
-		std::fstream read;
-		read.open(argv[1], std::fstream::in);
-
-
-		while(!read.eof())
-		{
-			uint64 addr;
-			read >> std::hex >> addr;
-			if(cache_tag_array.read(addr) == false)
-				miss++;
-			total++;
-		}
-		write << (1. * miss / total) << "; ";
-		read.close();
-		std::cout<< "close size = " << size << std::endl;
-	}
-	write << std::endl;
-*/
-
+	write << "Full ";
 
 	for(unsigned long size = 1024; size <= 1024*1024; size <<= 1 )
 	{
@@ -82,7 +57,7 @@ int main(int argc, char** argv)
 
 	for(unsigned int way = 1; way <= 16; way <<= 1)
 	{
-		write << way << "way(s)";
+		write << way << "way(s) ";
 		for(unsigned long size = 1024; size <= 1024*1024 ; size <<= 1 )
 		{
 			CacheTagArray cache_tag_array( size, way, BLOCK_SIZE_IN_BYTES, ADDR_SIZE_IN_BYTES);
